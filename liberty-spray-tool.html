@@ -53,6 +53,7 @@
   .v-good{background:rgba(94,201,122,.15);color:var(--good)}
   .v-ok{background:rgba(224,162,58,.15);color:var(--mid)}
   .v-bad{background:rgba(224,89,58,.15);color:var(--bad)}
+  .v-best{background:var(--accent);color:#06210f}
   .bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 16px;margin-top:8px}
   .bar{font-size:.78rem}
   .bar .bl{display:flex;justify-content:space-between;color:var(--muted)}
@@ -355,9 +356,10 @@ function scoreDays(periods){
     best.date=new Date(key);
     out.push(best);
   }
-  out.sort((a,b)=>a.date-b.date);        // keep chronological for stable display? No—rank by score
+  // rank by score to find the best day, then display in calendar order
   out.sort((a,b)=>b.total-a.total);
   out.forEach((d,i)=>d.rank=i+1);
+  out.sort((a,b)=>a.date-b.date);
   return out;
 }
 
@@ -373,10 +375,9 @@ function fmtTime(d){ let h=d.getHours(); const ap=h<12?"AM":"PM"; h=h%12||12; re
 function render(days){
   const R=$("results");
   if(!days.length){ R.innerHTML="<div class='panel'>No daytime forecast hours available for your spray window.</div>"; return; }
-  // best score among recommendable days for highlight
-  const topScore=days[0].total;
-  R.innerHTML="<div class='legend'>Ranked best → worst. Score blends humidity, sunlight, "
-    +"temperature, and wind, then is reduced for rain risk during the rainfast window.</div>";
+  R.innerHTML="<div class='legend'>Shown in calendar order; the ⭐ marks this week's best day. "
+    +"Score blends humidity, sunlight, temperature, and wind, then is reduced for rain risk "
+    +"during the rainfast window.</div>";
 
   days.forEach(d=>{
     const v=verdict(d.total);
@@ -396,7 +397,6 @@ function render(days){
     const dayName=d.date.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
     R.insertAdjacentHTML("beforeend",`
       <div class="day ${isBest?'best':''}">
-        <div class="rank">${d.rank}</div>
         <div class="scorebig">
           <div class="num" style="color:${colorFor(d.total)}">${Math.round(d.total)}</div>
           <div class="lbl">score</div>
@@ -404,6 +404,7 @@ function render(days){
         <div class="daymain">
           <div class="dayhead">
             <span class="dayname">${dayName}</span>
+            ${isBest?'<span class="verdict v-best">⭐ Best day</span>':''}
             <span class="rec">⏰ best ~${fmtTime(d.start)}</span>
             <span class="verdict ${v.cls}">${v.txt}</span>
           </div>
