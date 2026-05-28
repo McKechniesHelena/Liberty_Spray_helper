@@ -74,7 +74,9 @@
   .hrow.rec{background:rgba(94,201,122,.12)}
   .htime{font-weight:600}
   .hscore{font-weight:800;text-align:center}
-  .hdetail{color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chip{font-size:.72rem;padding:1px 6px;border-radius:5px;border:1px solid;
+    white-space:nowrap;font-weight:600}
   .legend{font-size:.78rem;color:var(--muted);margin-top:4px}
   .loc-name{font-size:.85rem;color:var(--muted);margin-top:6px}
   #townMatches{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
@@ -381,6 +383,7 @@ function scoreDays(periods){
 
 // ---------- rendering ----------
 function colorFor(v){ return v>=75?"var(--good)":v>=50?"var(--mid)":"var(--bad)"; }
+function hexFor(v){ return v>=75?"#5ec97a":v>=50?"#e0a23a":"#e0593a"; }
 function verdict(t){
   if(t>=72) return {cls:"v-good",txt:"Good day to spray"};
   if(t>=50) return {cls:"v-ok",txt:"Marginal"};
@@ -439,10 +442,18 @@ function render(days){
             </div>
             ${d.hours.map(h=>{
               const isRec=h.start.getTime()===d.start.getTime();
+              const chip=(txt,sc)=>{const c=hexFor(sc);
+                return `<span class="chip" style="color:${c};border-color:${c};background:${c}22">${txt}</span>`;};
               return `<div class="hrow${isRec?' rec':''}">
                 <span class="htime">${fmtTime(h.start)}${isRec?' ⏰':''}</span>
                 <span class="hscore" style="color:${colorFor(h.total)}">${Math.round(h.total)}</span>
-                <span class="hdetail">${h.temp}°F · ${h.rh!=null?h.rh+"%":"–"} · ${h.wind} mph · ${h.maxPop}% rain · ${h.sky||""}</span>
+                <span class="chips">
+                  ${chip(h.temp+"°F", h.sc.temp)}
+                  ${chip(h.rh!=null?h.rh+"% RH":"– RH", h.sc.humidity)}
+                  ${chip(h.wind+" mph", h.sc.wind)}
+                  ${chip(h.maxPop+"% rain", h.rainFactor*100)}
+                  ${chip(h.sky||"—", h.sc.sky)}
+                </span>
               </div>`;
             }).join("")}
           </div>
