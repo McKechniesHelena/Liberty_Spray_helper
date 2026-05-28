@@ -23,7 +23,7 @@
   .field{display:flex;flex-direction:column;gap:4px}
   label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   input,select{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
-    padding:8px 10px;border-radius:8px;font-size:.95rem;width:120px}
+    padding:9px 10px;border-radius:8px;font-size:16px;width:120px;max-width:100%}
   input.wide{width:230px}
   button{background:var(--accent);color:#06210f;border:none;padding:10px 18px;
     border-radius:8px;font-weight:700;font-size:.95rem;cursor:pointer}
@@ -62,6 +62,11 @@
   .notes b{color:var(--txt)}
   .legend{font-size:.78rem;color:var(--muted);margin-top:4px}
   .loc-name{font-size:.85rem;color:var(--muted);margin-top:6px}
+  #townMatches{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
+  .match{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    padding:7px 12px;border-radius:8px;cursor:pointer;font-size:.88rem;text-align:left}
+  .match:hover{border-color:var(--accent);background:#26323f}
+  .match .m-sub{color:var(--muted);font-size:.8rem}
   @media(max-width:560px){.day{flex-wrap:wrap}.daymain{flex-basis:100%}}
 </style>
 </head>
@@ -76,6 +81,14 @@
 <div class="wrap">
   <div class="panel">
     <div class="row">
+      <div class="field">
+        <label>Town / city name</label>
+        <input id="town" type="text" class="wide" placeholder="e.g. Lincoln, NE">
+      </div>
+      <button class="ghost" id="townGo">🔍 Search</button>
+    </div>
+    <div id="townMatches"></div>
+    <div class="row" style="margin-top:14px">
       <div class="field">
         <label>ZIP code</label>
         <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 50309" style="width:110px">
@@ -129,6 +142,7 @@ const $ = id => document.getElementById(id);
 const LS = "libertySprayCfg";
 function loadCfg(){
   try{ const c = JSON.parse(localStorage.getItem(LS)||"{}");
+    if(c.town!=null) $("town").value=c.town;
     if(c.zip!=null) $("zip").value=c.zip;
     if(c.lat!=null) $("lat").value=c.lat;
     if(c.lon!=null) $("lon").value=c.lon;
@@ -139,7 +153,7 @@ function loadCfg(){
 }
 function saveCfg(){
   localStorage.setItem(LS, JSON.stringify({
-    zip:$("zip").value, lat:$("lat").value, lon:$("lon").value,
+    town:$("town").value, zip:$("zip").value, lat:$("lat").value, lon:$("lon").value,
     startHr:$("startHr").value, endHr:$("endHr").value, rainfast:$("rainfast").value
   }));
 }
@@ -209,6 +223,41 @@ $("geo").onclick=()=>{
     e=>setStatus("Couldn't get location: "+e.message,true),
     {timeout:10000});
 };
+$("townGo").onclick=searchTown;
+$("town").addEventListener("keydown",e=>{ if(e.key==="Enter") searchTown(); });
+
+async function searchTown(){
+  const q=($("town").value||"").trim();
+  $("townMatches").innerHTML="";
+  if(q.length<2){ setStatus("Type a town name to search.",true); return; }
+  setStatus(`Searching for "${q}"…`);
+  try{
+    const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=10&language=en&format=json`);
+    if(!r.ok) throw new Error("search failed ("+r.status+")");
+    const d=await r.json();
+    const us=(d.results||[]).filter(p=>p.country_code==="US");
+    if(!us.length){ setStatus(`No US town found for "${q}".`,true); return; }
+    if(us.length===1){ pickPlace(us[0]); return; }
+    setStatus(`${us.length} matches — pick the right one:`);
+    us.forEach(p=>{
+      const b=document.createElement("button");
+      b.className="match";
+      const sub=[p.admin1, p.admin2].filter(Boolean).join(" · ");
+      b.innerHTML=`${p.name}<div class="m-sub">${sub||p.country}</div>`;
+      b.onclick=()=>pickPlace(p);
+      $("townMatches").appendChild(b);
+    });
+  }catch(e){ setStatus("Town search error: "+e.message,true); }
+}
+function pickPlace(p){
+  $("townMatches").innerHTML="";
+  $("lat").value=p.latitude.toFixed(4);
+  $("lon").value=p.longitude.toFixed(4);
+  setStatus(`${p.name}${p.admin1?", "+p.admin1:""} — fetching forecast…`);
+  saveCfg();
+  run();
+}
+
 $("zipGo").onclick=lookupZip;
 $("zip").addEventListener("keydown",e=>{ if(e.key==="Enter") lookupZip(); });
 $("go").onclick=run;
