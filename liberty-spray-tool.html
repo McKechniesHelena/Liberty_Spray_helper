@@ -61,6 +61,20 @@
   .bar .fill{height:100%;border-radius:4px}
   .notes{margin-top:8px;font-size:.82rem;color:var(--muted)}
   .notes b{color:var(--txt)}
+  .day{cursor:pointer}
+  .chev{margin-left:auto;font-size:.78rem;color:var(--muted);white-space:nowrap;
+    transition:transform .15s ease;align-self:center}
+  .day.open .chev{transform:rotate(90deg)}
+  .hourly{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  .hrow{display:grid;grid-template-columns:64px 46px 1fr;gap:8px;align-items:center;
+    padding:4px 6px;border-radius:6px;font-size:.82rem}
+  .hrow:nth-child(even){background:rgba(255,255,255,.025)}
+  .hrow.hhead{color:var(--muted);font-size:.72rem;text-transform:uppercase;
+    letter-spacing:.03em;background:none}
+  .hrow.rec{background:rgba(94,201,122,.12)}
+  .htime{font-weight:600}
+  .hscore{font-weight:800;text-align:center}
+  .hdetail{color:var(--muted)}
   .legend{font-size:.78rem;color:var(--muted);margin-top:4px}
   .loc-name{font-size:.85rem;color:var(--muted);margin-top:6px}
   #townMatches{margin-top:10px;display:flex;flex-wrap:wrap;gap:8px}
@@ -332,7 +346,7 @@ function scoreDays(periods){
   for(const key in groups){
     const hrs=groups[key].filter(p=>p.hr>=startHr && p.hr<=endHr);
     if(!hrs.length) continue;            // no daytime window (e.g. today already past)
-    let best=null;
+    let best=null; const hours=[];
     for(const h of hrs){
       // rainfast: max precip prob over [h, h+rainfast)
       let maxPop=h.pop;
@@ -351,9 +365,11 @@ function scoreDays(periods){
       // hard caps
       if(h.wind>20) total=Math.min(total,12);
       const cand={start:h.t,total,sc,maxPop,temp:h.temp,rh:h.rh,wind:h.wind,sky:h.sky,rainFactor};
+      hours.push(cand);
       if(!best||cand.total>best.total) best=cand;
     }
     best.date=new Date(key);
+    best.hours=hours;                   // keep every hour for the expandable view
     out.push(best);
   }
   // rank by score to find the best day, then display in calendar order
@@ -407,6 +423,7 @@ function render(days){
             ${isBest?'<span class="verdict v-best">⭐ Best day</span>':''}
             <span class="rec">⏰ best ~${fmtTime(d.start)}</span>
             <span class="verdict ${v.cls}">${v.txt}</span>
+            <span class="chev">▸ hourly</span>
           </div>
           <div class="bars">
             ${bar("Humidity",d.sc.humidity, d.rh!=null?d.rh+"%":"n/a")}
@@ -415,9 +432,31 @@ function render(days){
             ${bar("Wind",d.sc.wind, d.wind+" mph")}
           </div>
           ${notes.length?`<div class="notes">${notes.join(" · ")}</div>`:""}
+          <div class="hourly" hidden>
+            <div class="hrow hhead">
+              <span>Time</span><span>Score</span>
+              <span>Temp · Humidity · Wind · Rain · Sky</span>
+            </div>
+            ${d.hours.map(h=>{
+              const isRec=h.start.getTime()===d.start.getTime();
+              return `<div class="hrow${isRec?' rec':''}">
+                <span class="htime">${fmtTime(h.start)}${isRec?' ⏰':''}</span>
+                <span class="hscore" style="color:${colorFor(h.total)}">${Math.round(h.total)}</span>
+                <span class="hdetail">${h.temp}°F · ${h.rh!=null?h.rh+"%":"–"} · ${h.wind} mph · ${h.maxPop}% rain · ${h.sky||""}</span>
+              </div>`;
+            }).join("")}
+          </div>
         </div>
       </div>`);
   });
+
+  // tap a day to expand/collapse its hourly breakdown
+  R.onclick=e=>{
+    const day=e.target.closest(".day"); if(!day) return;
+    const h=day.querySelector(".hourly"); if(!h) return;
+    const open=day.classList.toggle("open");
+    h.hidden=!open;
+  };
 }
 
 loadCfg();
