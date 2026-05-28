@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liberty Spray Day Planner</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a222c; --panel2:#222d3a; --line:#2e3a48;
+    --txt:#e6edf3; --muted:#8b9bb0; --accent:#5ec97a; --accent2:#3a9b58;
+    --warn:#e0a23a; --bad:#e0593a; --good:#5ec97a; --mid:#e0a23a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.45}
+  header{padding:22px 20px 10px;text-align:center}
+  h1{margin:0 0 4px;font-size:1.5rem}
+  .sub{color:var(--muted);font-size:.9rem;max-width:640px;margin:0 auto}
+  .wrap{max-width:980px;margin:0 auto;padding:16px 16px 60px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:16px;margin-bottom:18px}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:4px}
+  label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    padding:8px 10px;border-radius:8px;font-size:.95rem;width:120px}
+  input.wide{width:230px}
+  button{background:var(--accent);color:#06210f;border:none;padding:10px 18px;
+    border-radius:8px;font-weight:700;font-size:.95rem;cursor:pointer}
+  button:hover{background:var(--accent2);color:#fff}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-weight:500}
+  button.ghost:hover{background:var(--panel2)}
+  .hint{font-size:.78rem;color:var(--muted);margin-top:6px}
+  details{margin-top:10px}
+  summary{cursor:pointer;color:var(--muted);font-size:.85rem}
+  .settings-grid{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px}
+  #status{margin:6px 0;font-size:.9rem;color:var(--muted);min-height:1.2em}
+  #status.err{color:var(--bad)}
+
+  .day{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;margin-bottom:12px;display:flex;gap:16px;align-items:center}
+  .day.best{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .rank{font-size:1.4rem;font-weight:800;width:34px;text-align:center;color:var(--muted)}
+  .day.best .rank{color:var(--accent)}
+  .scorebig{display:flex;flex-direction:column;align-items:center;width:78px}
+  .scorebig .num{font-size:1.9rem;font-weight:800;line-height:1}
+  .scorebig .lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+  .daymain{flex:1;min-width:0}
+  .dayhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .dayname{font-size:1.1rem;font-weight:700}
+  .rec{font-size:.9rem;color:var(--accent)}
+  .verdict{font-size:.82rem;padding:2px 8px;border-radius:20px;font-weight:600}
+  .v-good{background:rgba(94,201,122,.15);color:var(--good)}
+  .v-ok{background:rgba(224,162,58,.15);color:var(--mid)}
+  .v-bad{background:rgba(224,89,58,.15);color:var(--bad)}
+  .bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 16px;margin-top:8px}
+  .bar{font-size:.78rem}
+  .bar .bl{display:flex;justify-content:space-between;color:var(--muted)}
+  .bar .track{height:6px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:2px}
+  .bar .fill{height:100%;border-radius:4px}
+  .notes{margin-top:8px;font-size:.82rem;color:var(--muted)}
+  .notes b{color:var(--txt)}
+  .legend{font-size:.78rem;color:var(--muted);margin-top:4px}
+  .loc-name{font-size:.85rem;color:var(--muted);margin-top:6px}
+  @media(max-width:560px){.day{flex-wrap:wrap}.daymain{flex-basis:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌱 Liberty Spray Day Planner</h1>
+  <p class="sub">Ranks the coming week's days for spraying Liberty (glufosinate) herbicide,
+  using the US National Weather Service forecast. Glufosinate works best on warm, humid, sunny
+  days with light wind and no rain for several hours after application.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label>ZIP code</label>
+        <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="e.g. 50309" style="width:110px">
+      </div>
+      <button class="ghost" id="zipGo">Find coords</button>
+      <div class="field">
+        <label>Latitude</label>
+        <input id="lat" type="number" step="0.0001" placeholder="e.g. 40.7128">
+      </div>
+      <div class="field">
+        <label>Longitude</label>
+        <input id="lon" type="number" step="0.0001" placeholder="e.g. -74.0060">
+      </div>
+      <button class="ghost" id="geo">📍 Use my location</button>
+      <button id="go">Get forecast &amp; rank days</button>
+    </div>
+    <div class="loc-name" id="locName"></div>
+    <div class="hint">Tip: right-click your field in Google Maps to copy its lat, lon.
+      US locations only (National Weather Service coverage).</div>
+
+    <details>
+      <summary>Spray-condition settings</summary>
+      <div class="settings-grid">
+        <div class="field">
+          <label>Earliest spray hour</label>
+          <select id="startHr"></select>
+        </div>
+        <div class="field">
+          <label>Latest spray hour</label>
+          <select id="endHr"></select>
+        </div>
+        <div class="field">
+          <label>Rainfast hours</label>
+          <input id="rainfast" type="number" min="1" max="12" value="4" style="width:80px">
+        </div>
+      </div>
+      <div class="hint">Spray window is the daytime range you'd consider. "Rainfast hours" is how
+      long the herbicide needs to stay dry after spraying (Liberty's label is ~4 hours).</div>
+    </details>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+</div>
+
+<script>
+"use strict";
+
+// ---------- settings / persistence ----------
+const $ = id => document.getElementById(id);
+const LS = "libertySprayCfg";
+function loadCfg(){
+  try{ const c = JSON.parse(localStorage.getItem(LS)||"{}");
+    if(c.zip!=null) $("zip").value=c.zip;
+    if(c.lat!=null) $("lat").value=c.lat;
+    if(c.lon!=null) $("lon").value=c.lon;
+    if(c.startHr!=null) $("startHr").value=c.startHr;
+    if(c.endHr!=null) $("endHr").value=c.endHr;
+    if(c.rainfast!=null) $("rainfast").value=c.rainfast;
+  }catch(e){}
+}
+function saveCfg(){
+  localStorage.setItem(LS, JSON.stringify({
+    zip:$("zip").value, lat:$("lat").value, lon:$("lon").value,
+    startHr:$("startHr").value, endHr:$("endHr").value, rainfast:$("rainfast").value
+  }));
+}
+// populate hour selects
+(function(){
+  const fmt = h => { const ap=h<12?"AM":"PM"; let hh=h%12; if(hh===0)hh=12; return hh+" "+ap; };
+  for(let h=5;h<=20;h++){
+    $("startHr").add(new Option(fmt(h),h));
+    $("endHr").add(new Option(fmt(h),h));
+  }
+  $("startHr").value=9; $("endHr").value=17;
+})();
+
+// ---------- scoring ----------
+// All sub-scores return 0..100.
+
+function tempScore(f){            // °F
+  if(f>=70 && f<=85) return 100;
+  if(f>85)  return Math.max(30, 100 - (f-85)*4.5);   // heat penalty
+  if(f>=60) return 80 + (f-60);                       // 60->80 .. 70->90.. cap below
+  if(f>=50) return 45 + (f-50)*3.5;                   // 50->45 .. 60->80
+  if(f>=40) return 15 + (f-40)*3;                     // cold, poor uptake
+  return 5;
+}
+function humidityScore(rh){       // %
+  if(rh==null) return 60;         // unknown -> neutral
+  if(rh>=70) return 100;
+  if(rh>=55) return 70 + (rh-55)*2;      // 55->70 .. 70->100
+  if(rh>=40) return 45 + (rh-40)*(25/15);// 40->45 .. 55->70
+  if(rh>=25) return 25 + (rh-25);        // dry, weak uptake
+  return 15;
+}
+function windScore(mph){
+  if(mph<=10 && mph>=3) return 100;      // ideal
+  if(mph<3)  return 65 + mph*10;         // calm: inversion / poor coverage (3->95)
+  if(mph<=15) return 100 - (mph-10)*9;   // 10->100 .. 15->55
+  if(mph<=20) return 55 - (mph-15)*9;    // 15->55 .. 20->10
+  return 0;                               // unsprayable drift
+}
+// sunlight from NWS shortForecast text
+function skyScore(text){
+  const t=(text||"").toLowerCase();
+  if(/(sunny|clear)/.test(t) && !/partly|mostly/.test(t)) return 100;
+  if(/mostly sunny|mostly clear/.test(t)) return 90;
+  if(/partly (sunny|cloudy)|partly clear/.test(t)) return 78;
+  if(/mostly cloudy/.test(t)) return 58;
+  if(/(cloudy|overcast)/.test(t)) return 45;
+  if(/fog|haze/.test(t)) return 55;
+  if(/(rain|shower|thunder|storm|snow|sleet|drizzle)/.test(t)) return 30;
+  return 70; // unknown
+}
+function parseWind(s){            // "10 mph" or "5 to 15 mph" -> take the higher figure
+  if(!s) return 0;
+  const nums=(s.match(/\d+/g)||[]).map(Number);
+  return nums.length?Math.max(...nums):0;
+}
+
+const WEIGHTS={humidity:.28, sky:.26, temp:.30, wind:.16}; // sums to 1.0; rain handled as cap+penalty
+
+// ---------- main ----------
+$("geo").onclick=()=>{
+  setStatus("Locating…");
+  navigator.geolocation.getCurrentPosition(
+    p=>{ $("lat").value=p.coords.latitude.toFixed(4);
+         $("lon").value=p.coords.longitude.toFixed(4);
+         setStatus(""); saveCfg(); },
+    e=>setStatus("Couldn't get location: "+e.message,true),
+    {timeout:10000});
+};
+$("zipGo").onclick=lookupZip;
+$("zip").addEventListener("keydown",e=>{ if(e.key==="Enter") lookupZip(); });
+$("go").onclick=run;
+
+async function lookupZip(){
+  const zip=($("zip").value||"").trim();
+  if(!/^\d{5}$/.test(zip)){ setStatus("Enter a 5-digit US ZIP code.",true); return; }
+  setStatus("Looking up ZIP "+zip+"…");
+  try{
+    const r=await fetch(`https://api.zippopotam.us/us/${zip}`);
+    if(!r.ok) throw new Error(r.status===404?"ZIP not found":"lookup failed ("+r.status+")");
+    const d=await r.json();
+    const place=d.places && d.places[0];
+    if(!place) throw new Error("no coordinates for that ZIP");
+    $("lat").value=parseFloat(place.latitude).toFixed(4);
+    $("lon").value=parseFloat(place.longitude).toFixed(4);
+    setStatus(`Found ${place["place name"]}, ${place["state abbreviation"]} — fetching forecast…`);
+    saveCfg();
+    run();
+  }catch(e){ setStatus("ZIP lookup error: "+e.message,true); }
+}
+
+function setStatus(msg,err){ const s=$("status"); s.textContent=msg; s.className=err?"err":""; }
+
+async function nws(url){
+  const r=await fetch(url,{headers:{"Accept":"application/geo+json"}});
+  if(!r.ok) throw new Error("NWS "+r.status+" ("+url.split("/").slice(-2).join("/")+")");
+  return r.json();
+}
+
+async function run(){
+  const lat=parseFloat($("lat").value), lon=parseFloat($("lon").value);
+  if(isNaN(lat)||isNaN(lon)){ setStatus("Enter a latitude and longitude first.",true); return; }
+  saveCfg();
+  $("results").innerHTML=""; $("locName").textContent="";
+  setStatus("Looking up forecast office…");
+  try{
+    const pts=await nws(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
+    const rl=pts.properties.relativeLocation?.properties;
+    if(rl) $("locName").textContent=`📍 Near ${rl.city}, ${rl.state}`;
+    setStatus("Fetching hourly forecast…");
+    const fc=await nws(pts.properties.forecastHourly);
+    const periods=fc.properties.periods;
+    if(!periods||!periods.length) throw new Error("No hourly data returned.");
+    const days=scoreDays(periods);
+    render(days);
+    setStatus(`Forecast updated ${new Date().toLocaleString()}.`);
+  }catch(e){
+    setStatus("Error: "+e.message+". Check the coordinates are within the US.",true);
+  }
+}
+
+function scoreDays(periods){
+  const startHr=+$("startHr").value, endHr=+$("endHr").value;
+  const rainfast=Math.max(1,Math.min(12,+$("rainfast").value||4));
+  // index periods by epoch hour for rain look-ahead
+  const byTime=periods.map(p=>({
+    t:new Date(p.startTime), hr:new Date(p.startTime).getHours(),
+    temp:p.temperature, rh:p.relativeHumidity?.value,
+    wind:parseWind(p.windSpeed), pop:p.probabilityOfPrecipitation?.value||0,
+    sky:p.shortForecast
+  }));
+  // group by calendar day
+  const groups={};
+  byTime.forEach((p,i)=>{
+    const key=p.t.toDateString();
+    (groups[key]=groups[key]||[]).push({...p,idx:i});
+  });
+
+  const out=[];
+  for(const key in groups){
+    const hrs=groups[key].filter(p=>p.hr>=startHr && p.hr<=endHr);
+    if(!hrs.length) continue;            // no daytime window (e.g. today already past)
+    let best=null;
+    for(const h of hrs){
+      // rainfast: max precip prob over [h, h+rainfast)
+      let maxPop=h.pop;
+      for(let k=0;k<rainfast;k++){
+        const nx=byTime[h.idx+k]; if(nx) maxPop=Math.max(maxPop,nx.pop);
+      }
+      const sc={
+        temp:tempScore(h.temp), humidity:humidityScore(h.rh),
+        wind:windScore(h.wind), sky:skyScore(h.sky)
+      };
+      let total=WEIGHTS.temp*sc.temp + WEIGHTS.humidity*sc.humidity
+              + WEIGHTS.wind*sc.wind + WEIGHTS.sky*sc.sky;
+      // rain penalty: scales the score; high chance of rain in rainfast window = washout
+      const rainFactor = maxPop<=10 ? 1 : maxPop>=70 ? 0.25 : 1 - (maxPop-10)*0.0125; // 10%->1 ..70%->0.25
+      total*=rainFactor;
+      // hard caps
+      if(h.wind>20) total=Math.min(total,12);
+      const cand={start:h.t,total,sc,maxPop,temp:h.temp,rh:h.rh,wind:h.wind,sky:h.sky,rainFactor};
+      if(!best||cand.total>best.total) best=cand;
+    }
+    best.date=new Date(key);
+    out.push(best);
+  }
+  out.sort((a,b)=>a.date-b.date);        // keep chronological for stable display? No—rank by score
+  out.sort((a,b)=>b.total-a.total);
+  out.forEach((d,i)=>d.rank=i+1);
+  return out;
+}
+
+// ---------- rendering ----------
+function colorFor(v){ return v>=75?"var(--good)":v>=50?"var(--mid)":"var(--bad)"; }
+function verdict(t){
+  if(t>=72) return {cls:"v-good",txt:"Good day to spray"};
+  if(t>=50) return {cls:"v-ok",txt:"Marginal"};
+  return {cls:"v-bad",txt:"Avoid"};
+}
+function fmtTime(d){ let h=d.getHours(); const ap=h<12?"AM":"PM"; h=h%12||12; return h+" "+ap; }
+
+function render(days){
+  const R=$("results");
+  if(!days.length){ R.innerHTML="<div class='panel'>No daytime forecast hours available for your spray window.</div>"; return; }
+  // best score among recommendable days for highlight
+  const topScore=days[0].total;
+  R.innerHTML="<div class='legend'>Ranked best → worst. Score blends humidity, sunlight, "
+    +"temperature, and wind, then is reduced for rain risk during the rainfast window.</div>";
+
+  days.forEach(d=>{
+    const v=verdict(d.total);
+    const isBest = d.rank===1 && d.total>=50;
+    const bar=(name,val,extra)=>`
+      <div class="bar"><div class="bl"><span>${name}</span><span>${extra}</span></div>
+      <div class="track"><div class="fill" style="width:${Math.max(2,Math.round(val))}%;
+        background:${colorFor(val)}"></div></div></div>`;
+
+    const notes=[];
+    if(d.maxPop>=30) notes.push(`<b>${d.maxPop}%</b> rain chance within rainfast window`);
+    if(d.wind>15) notes.push(`<b>${d.wind} mph</b> wind — drift risk`);
+    if(d.rh!=null && d.rh<40) notes.push(`low humidity (<b>${d.rh}%</b>) reduces uptake`);
+    if(d.temp<55) notes.push(`cool (<b>${d.temp}°F</b>) — slower activity`);
+    if(d.rainFactor<1) notes.push(`score reduced ${Math.round((1-d.rainFactor)*100)}% for rain risk`);
+
+    const dayName=d.date.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+    R.insertAdjacentHTML("beforeend",`
+      <div class="day ${isBest?'best':''}">
+        <div class="rank">${d.rank}</div>
+        <div class="scorebig">
+          <div class="num" style="color:${colorFor(d.total)}">${Math.round(d.total)}</div>
+          <div class="lbl">score</div>
+        </div>
+        <div class="daymain">
+          <div class="dayhead">
+            <span class="dayname">${dayName}</span>
+            <span class="rec">⏰ best ~${fmtTime(d.start)}</span>
+            <span class="verdict ${v.cls}">${v.txt}</span>
+          </div>
+          <div class="bars">
+            ${bar("Humidity",d.sc.humidity, d.rh!=null?d.rh+"%":"n/a")}
+            ${bar("Sunlight",d.sc.sky, d.sky||"")}
+            ${bar("Temp",d.sc.temp, d.temp+"°F")}
+            ${bar("Wind",d.sc.wind, d.wind+" mph")}
+          </div>
+          ${notes.length?`<div class="notes">${notes.join(" · ")}</div>`:""}
+        </div>
+      </div>`);
+  });
+}
+
+loadCfg();
+</script>
+</body>
+</html>
