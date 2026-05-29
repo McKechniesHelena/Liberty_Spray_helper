@@ -54,6 +54,7 @@
   .v-ok{background:rgba(224,162,58,.15);color:var(--mid)}
   .v-bad{background:rgba(224,89,58,.15);color:var(--bad)}
   .v-best{background:var(--accent);color:#06210f}
+  .v-boost{background:rgba(94,201,122,.18);color:var(--good);border:1px solid var(--accent2)}
   .bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 16px;margin-top:8px}
   .bar{font-size:.78rem}
   .bar .bl{display:flex;justify-content:space-between;color:var(--muted)}
@@ -361,12 +362,19 @@ function scoreDays(periods){
       };
       let total=WEIGHTS.temp*sc.temp + WEIGHTS.humidity*sc.humidity
               + WEIGHTS.wind*sc.wind + WEIGHTS.sky*sc.sky;
+      // warm + humid synergy: temp(°F) + RH(%) over 150 tends to make a strong
+      // spray day, so boost it (offsets some cloud cover). Bonus ~+10 at the
+      // threshold, scaling up to +18.
+      const thSum = h.rh!=null ? h.temp + h.rh : null;
+      let synergy = 0;
+      if(thSum!=null && thSum>150){ synergy = Math.min(18, 10 + (thSum-150)*0.4); }
+      total = Math.min(100, total + synergy);
       // rain penalty: scales the score; high chance of rain in rainfast window = washout
       const rainFactor = maxPop<=10 ? 1 : maxPop>=70 ? 0.25 : 1 - (maxPop-10)*0.0125; // 10%->1 ..70%->0.25
       total*=rainFactor;
       // hard caps
       if(h.wind>20) total=Math.min(total,12);
-      const cand={start:h.t,total,sc,maxPop,temp:h.temp,rh:h.rh,wind:h.wind,sky:h.sky,rainFactor};
+      const cand={start:h.t,total,sc,maxPop,temp:h.temp,rh:h.rh,wind:h.wind,sky:h.sky,rainFactor,thSum,synergy};
       hours.push(cand);
       if(!best||cand.total>best.total) best=cand;
     }
@@ -396,7 +404,7 @@ function render(days){
   if(!days.length){ R.innerHTML="<div class='panel'>No daytime forecast hours available for your spray window.</div>"; return; }
   R.innerHTML="<div class='legend'>Shown in calendar order; the ⭐ marks this week's best day. "
     +"Score blends humidity, sunlight, temperature, and wind, then is reduced for rain risk "
-    +"during the rainfast window.</div>";
+    +"during the rainfast window. Days where temperature + humidity exceed 150 get a bonus.</div>";
 
   days.forEach(d=>{
     const v=verdict(d.total);
@@ -407,6 +415,7 @@ function render(days){
         background:${colorFor(val)}"></div></div></div>`;
 
     const notes=[];
+    if(d.synergy>0) notes.push(`<b>warm + humid</b> (temp+RH = ${d.thSum}) — strong uptake, score boosted`);
     if(d.maxPop>=30) notes.push(`<b>${d.maxPop}%</b> rain chance within rainfast window`);
     if(d.wind>15) notes.push(`<b>${d.wind} mph</b> wind — drift risk`);
     if(d.rh!=null && d.rh<40) notes.push(`low humidity (<b>${d.rh}%</b>) reduces uptake`);
@@ -424,6 +433,7 @@ function render(days){
           <div class="dayhead">
             <span class="dayname">${dayName}</span>
             ${isBest?'<span class="verdict v-best">⭐ Best day</span>':''}
+            ${d.synergy>0?'<span class="verdict v-boost">🌡️💧 warm &amp; humid</span>':''}
             <span class="rec">⏰ best ~${fmtTime(d.start)}</span>
             <span class="verdict ${v.cls}">${v.txt}</span>
             <span class="chev">▸ hourly</span>
