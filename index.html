@@ -86,10 +86,49 @@
     padding:7px 12px;border-radius:8px;cursor:pointer;font-size:.88rem;text-align:left}
   .match:hover{border-color:var(--accent);background:#26323f}
   .match .m-sub{color:var(--muted);font-size:.8rem}
-  @media(max-width:560px){.day{flex-wrap:wrap}.daymain{flex-basis:100%}}
+  @media(max-width:560px){.day{flex-wrap:wrap}.daymain{flex-basis:100%}
+    header{padding-top:52px}h1{font-size:1.25rem}
+    .hist-btn{font-size:.78rem;padding:7px 10px}}
+
+  .hist-btn{position:fixed;top:10px;right:12px;z-index:40;width:auto;
+    background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    padding:8px 12px;border-radius:8px;font-size:.82rem;font-weight:600}
+  .hist-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--panel2)}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:60;
+    display:flex;justify-content:center;align-items:flex-start;padding:18px;overflow:auto}
+  .modal[hidden]{display:none}
+  .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    width:100%;max-width:780px;padding:16px;margin-top:24px}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px}
+  .modal-head span{font-weight:700;font-size:1.05rem}
+  .hist-note{font-size:.78rem;color:var(--muted);margin:2px 0 10px}
+  .hist-summary{font-size:.86rem;margin-bottom:10px}
+  .hist-summary b{color:var(--txt)}
+  .hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px}
+  .htile{border:1px solid;border-radius:8px;padding:5px 4px;text-align:center}
+  .htile-date{font-size:.68rem;color:var(--muted)}
+  .htile-best{font-size:1.2rem;font-weight:800;line-height:1.15}
+  .htile-avg{font-size:.6rem;color:var(--muted)}
+  .hist-load{padding:24px;text-align:center;color:var(--muted)}
+  .hist-legend{margin-top:12px;font-size:.76rem;color:var(--muted);display:flex;
+    gap:12px;flex-wrap:wrap;align-items:center}
+  .hist-legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;
+    margin-right:4px;vertical-align:middle}
 </style>
 </head>
 <body>
+<button id="histBtn" class="hist-btn">📅 Historic scores</button>
+
+<div id="histModal" class="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <span id="histTitle">Historic daily scores</span>
+      <button id="histClose" class="ghost" style="width:auto">✕ Close</button>
+    </div>
+    <div id="histBody"></div>
+  </div>
+</div>
+
 <header>
   <h1>🌱 Liberty Spray Day Planner</h1>
   <p class="sub">Ranks the coming week's days for spraying Liberty (glufosinate) herbicide,
@@ -483,6 +522,107 @@ function render(days){
     h.hidden=!open;
   };
 }
+
+// ---------- historic scores (Open-Meteo archive) ----------
+function skyFromCloud(cc){
+  if(cc==null) return 70;
+  if(cc<=10) return 100; if(cc<=30) return 90; if(cc<=60) return 78;
+  if(cc<=85) return 58; return 45;
+}
+function rainFactorPrecip(inch){            // actual precip in rainfast window
+  if(inch<=0.005) return 1;
+  if(inch>=0.25) return 0.25;
+  return 1 - (inch-0.005)/0.245*0.75;
+}
+function scoreHistoric(H){
+  const startHr=+$("startHr").value, endHr=+$("endHr").value;
+  const rainfast=Math.max(1,Math.min(12,+$("rainfast").value||4));
+  const t=H.time, temp=H.temperature_2m, rh=H.relative_humidity_2m,
+        wind=H.wind_speed_10m, cloud=H.cloud_cover, precip=H.precipitation;
+  const days={};
+  for(let i=0;i<t.length;i++){
+    const hr=+t[i].slice(11,13);
+    if(hr<startHr||hr>endHr) continue;
+    if(temp[i]==null||wind[i]==null) continue;
+    let pre=0; for(let k=0;k<rainfast;k++){ const v=precip[i+k]; if(v!=null) pre+=v; }
+    const sc={temp:tempScore(temp[i]),humidity:humidityScore(rh[i]),
+              wind:windScore(wind[i]),sky:skyFromCloud(cloud[i])};
+    let total=WEIGHTS.temp*sc.temp+WEIGHTS.humidity*sc.humidity
+             +WEIGHTS.wind*sc.wind+WEIGHTS.sky*sc.sky;
+    const thSum=rh[i]!=null?temp[i]+rh[i]:null;
+    if(thSum!=null&&thSum>150) total=Math.min(100,total+Math.min(18,10+(thSum-150)*0.4));
+    total*=rainFactorPrecip(pre);
+    if(wind[i]>20) total=Math.min(total,12);
+    const key=t[i].slice(0,10);
+    (days[key]=days[key]||[]).push(total);
+  }
+  const todayKey=(()=>{const d=new Date();const p=n=>String(n).padStart(2,"0");
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());})();
+  const out=[];
+  for(const key in days){
+    if(key>=todayKey) continue;            // completed days only
+    const arr=days[key];
+    out.push({date:new Date(key+"T12:00"),best:Math.max(...arr),
+              avg:arr.reduce((a,b)=>a+b,0)/arr.length});
+  }
+  out.sort((a,b)=>a.date-b.date);
+  return out;
+}
+async function showHistoric(){
+  const lat=parseFloat($("lat").value), lon=parseFloat($("lon").value);
+  if(isNaN(lat)||isNaN(lon)){
+    setStatus("Pick a location first (search, ZIP, or coordinates) before viewing history.",true);
+    return;
+  }
+  $("histModal").hidden=false;
+  $("histTitle").textContent="Historic daily scores";
+  $("histBody").innerHTML="<div class='hist-load'>Loading the last 31 days…</div>";
+  try{
+    const fd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const end=new Date(), start=new Date(end.getTime()-31*864e5);
+    const u=`https://archive-api.open-meteo.com/v1/archive?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
+      +`&start_date=${fd(start)}&end_date=${fd(end)}`
+      +`&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
+      +`&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,cloud_cover,precipitation`;
+    const r=await fetch(u);
+    if(!r.ok) throw new Error("archive request failed ("+r.status+")");
+    const d=await r.json();
+    if(!d.hourly||!d.hourly.time) throw new Error("no historic data returned");
+    renderHistoric(scoreHistoric(d.hourly));
+  }catch(e){
+    $("histBody").innerHTML="<div class='hist-load'>Couldn't load history: "+e.message+"</div>";
+  }
+}
+function renderHistoric(days){
+  if(!days.length){ $("histBody").innerHTML="<div class='hist-load'>No historic data available for this spot.</div>"; return; }
+  const loc=$("locName").textContent.replace("📍","").trim();
+  const fmtMD=d=>(d.getMonth()+1)+"/"+d.getDate();
+  $("histTitle").textContent=`Historic scores · ${fmtMD(days[0].date)}–${fmtMD(days[days.length-1].date)}`;
+  const best=days.reduce((a,b)=>b.best>a.best?b:a);
+  const good=days.filter(d=>d.best>=72).length;
+  const avgBest=Math.round(days.reduce((s,d)=>s+d.best,0)/days.length);
+  const tiles=days.map(d=>{
+    const c=hexFor(d.best);
+    return `<div class="htile" style="border-color:${c};background:${c}22"
+        title="${d.date.toDateString()} — best ${Math.round(d.best)}, avg ${Math.round(d.avg)}">
+      <div class="htile-date">${fmtMD(d.date)}</div>
+      <div class="htile-best" style="color:${c}">${Math.round(d.best)}</div>
+      <div class="htile-avg">avg ${Math.round(d.avg)}</div>
+    </div>`;
+  }).join("");
+  $("histBody").innerHTML=
+    `<p class="hist-note">${loc?loc+" — ":""}each tile is the day's best-hour score (number) with the daytime average below. Based on recorded weather (actual cloud &amp; rainfall).</p>`
+    +`<div class="hist-summary"><b>${good}</b> of ${days.length} days would have scored 72+ · `
+    +`avg best-hour <b>${avgBest}</b> · best day <b>${best.date.toLocaleDateString(undefined,{month:"short",day:"numeric"})}</b> (${Math.round(best.best)})</div>`
+    +`<div class="hgrid">${tiles}</div>`
+    +`<div class="hist-legend">Scale:`
+    +`<span><span class="sw" style="background:#5ec97a"></span>good (75+)</span>`
+    +`<span><span class="sw" style="background:#e0a23a"></span>marginal (50–74)</span>`
+    +`<span><span class="sw" style="background:#e0593a"></span>poor (&lt;50)</span></div>`;
+}
+$("histBtn").onclick=showHistoric;
+$("histClose").onclick=()=>{ $("histModal").hidden=true; };
+$("histModal").onclick=e=>{ if(e.target===$("histModal")) $("histModal").hidden=true; };
 
 loadCfg();
 </script>
