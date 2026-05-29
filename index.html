@@ -42,9 +42,10 @@
   .day.best{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
   .rank{font-size:1.4rem;font-weight:800;width:34px;text-align:center;color:var(--muted)}
   .day.best .rank{color:var(--accent)}
-  .scorebig{display:flex;flex-direction:column;align-items:center;width:78px}
+  .scorebig{display:flex;flex-direction:column;align-items:center;width:86px;flex-shrink:0}
   .scorebig .num{font-size:1.9rem;font-weight:800;line-height:1}
-  .scorebig .lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+  .scorebig .num-avg{font-size:1.25rem;font-weight:800;line-height:1;margin-top:9px;opacity:.92}
+  .scorebig .lbl{font-size:.68rem;color:var(--muted);text-transform:uppercase;white-space:nowrap}
   .daymain{flex:1;min-width:0}
   .dayhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .dayname{font-size:1.1rem;font-weight:700}
@@ -380,6 +381,7 @@ function scoreDays(periods){
     }
     best.date=new Date(key);
     best.hours=hours;                   // keep every hour for the expandable view
+    best.avg=hours.reduce((s,h)=>s+h.total,0)/hours.length;  // mean across spray window
     out.push(best);
   }
   // rank by score to find the best day, then display in calendar order
@@ -427,7 +429,9 @@ function render(days){
       <div class="day ${isBest?'best':''}">
         <div class="scorebig">
           <div class="num" style="color:${colorFor(d.total)}">${Math.round(d.total)}</div>
-          <div class="lbl">score</div>
+          <div class="lbl">best hour</div>
+          <div class="num-avg" style="color:${colorFor(d.avg)}">${Math.round(d.avg)}</div>
+          <div class="lbl">avg score</div>
         </div>
         <div class="daymain">
           <div class="dayhead">
