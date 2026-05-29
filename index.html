@@ -105,7 +105,10 @@
   .hist-summary{font-size:.86rem;margin-bottom:10px}
   .hist-summary b{color:var(--txt)}
   .hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px}
-  .htile{border:1px solid;border-radius:8px;padding:5px 4px;text-align:center}
+  .htile{border:1px solid;border-radius:8px;padding:5px 4px;text-align:center;cursor:pointer}
+  .htile:hover{filter:brightness(1.25)}
+  .htile.sel{outline:2px solid var(--accent);outline-offset:1px}
+  .hist-detail-head{margin-top:16px;margin-bottom:2px;font-weight:700;font-size:.95rem}
   .htile-date{font-size:.68rem;color:var(--muted)}
   .htile-best{font-size:1.2rem;font-weight:800;line-height:1.15}
   .htile-avg{font-size:.6rem;color:var(--muted)}
@@ -554,16 +557,21 @@ function scoreHistoric(H){
     total*=rainFactorPrecip(pre);
     if(wind[i]>20) total=Math.min(total,12);
     const key=t[i].slice(0,10);
-    (days[key]=days[key]||[]).push(total);
+    (days[key]=days[key]||[]).push({
+      start:new Date(t[i]), total, sc,
+      temp:Math.round(temp[i]), rh:rh[i]!=null?Math.round(rh[i]):null,
+      wind:Math.round(wind[i]), cloud:cloud[i]!=null?Math.round(cloud[i]):null,
+      pre, rainFactor:rainFactorPrecip(pre)
+    });
   }
   const todayKey=(()=>{const d=new Date();const p=n=>String(n).padStart(2,"0");
     return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());})();
   const out=[];
   for(const key in days){
     if(key>=todayKey) continue;            // completed days only
-    const arr=days[key];
-    out.push({date:new Date(key+"T12:00"),best:Math.max(...arr),
-              avg:arr.reduce((a,b)=>a+b,0)/arr.length});
+    const arr=days[key], totals=arr.map(h=>h.total);
+    out.push({date:new Date(key+"T12:00"),best:Math.max(...totals),
+              avg:totals.reduce((a,b)=>a+b,0)/totals.length, hours:arr});
   }
   out.sort((a,b)=>a.date-b.date);
   return out;
@@ -593,7 +601,9 @@ async function showHistoric(){
     $("histBody").innerHTML="<div class='hist-load'>Couldn't load history: "+e.message+"</div>";
   }
 }
+let histDays=[];
 function renderHistoric(days){
+  histDays=days;
   if(!days.length){ $("histBody").innerHTML="<div class='hist-load'>No historic data available for this spot.</div>"; return; }
   const loc=$("locName").textContent.replace("📍","").trim();
   const fmtMD=d=>(d.getMonth()+1)+"/"+d.getDate();
@@ -601,9 +611,9 @@ function renderHistoric(days){
   const best=days.reduce((a,b)=>b.best>a.best?b:a);
   const good=days.filter(d=>d.best>=72).length;
   const avgBest=Math.round(days.reduce((s,d)=>s+d.best,0)/days.length);
-  const tiles=days.map(d=>{
+  const tiles=days.map((d,i)=>{
     const c=hexFor(d.best);
-    return `<div class="htile" style="border-color:${c};background:${c}22"
+    return `<div class="htile" data-i="${i}" style="border-color:${c};background:${c}22"
         title="${d.date.toDateString()} — best ${Math.round(d.best)}, avg ${Math.round(d.avg)}">
       <div class="htile-date">${fmtMD(d.date)}</div>
       <div class="htile-best" style="color:${c}">${Math.round(d.best)}</div>
@@ -611,15 +621,48 @@ function renderHistoric(days){
     </div>`;
   }).join("");
   $("histBody").innerHTML=
-    `<p class="hist-note">${loc?loc+" — ":""}each tile is the day's best-hour score (number) with the daytime average below. Based on recorded weather (actual cloud &amp; rainfall).</p>`
+    `<p class="hist-note">${loc?loc+" — ":""}each tile is the day's best-hour score (number) with the daytime average below — tap a day for its hourly. Based on recorded weather (actual cloud &amp; rainfall).</p>`
     +`<div class="hist-summary"><b>${good}</b> of ${days.length} days would have scored 72+ · `
     +`avg best-hour <b>${avgBest}</b> · best day <b>${best.date.toLocaleDateString(undefined,{month:"short",day:"numeric"})}</b> (${Math.round(best.best)})</div>`
     +`<div class="hgrid">${tiles}</div>`
     +`<div class="hist-legend">Scale:`
     +`<span><span class="sw" style="background:#5ec97a"></span>good (75+)</span>`
     +`<span><span class="sw" style="background:#e0a23a"></span>marginal (50–74)</span>`
-    +`<span><span class="sw" style="background:#e0593a"></span>poor (&lt;50)</span></div>`;
+    +`<span><span class="sw" style="background:#e0593a"></span>poor (&lt;50)</span></div>`
+    +`<div id="histDetail"></div>`;
 }
+function renderHistoricDetail(day){
+  const chip=(txt,sc)=>{const c=hexFor(sc);
+    return `<span class="chip" style="color:${c};border-color:${c};background:${c}22">${txt}</span>`;};
+  const bestT=Math.max(...day.hours.map(h=>h.total));
+  const rows=day.hours.map(h=>{
+    const isRec=h.total===bestT;
+    return `<div class="hrow${isRec?' rec':''}">
+      <span class="htime">${fmtTime(h.start)}${isRec?' ⏰':''}</span>
+      <span class="hscore" style="color:${colorFor(h.total)}">${Math.round(h.total)}</span>
+      <span class="chips">
+        ${chip(h.temp+"°F", h.sc.temp)}
+        ${chip(h.rh!=null?h.rh+"% RH":"– RH", h.sc.humidity)}
+        ${chip(h.wind+" mph", h.sc.wind)}
+        ${chip(h.pre.toFixed(2)+'" rain', h.rainFactor*100)}
+        ${chip((h.cloud!=null?h.cloud:"–")+"% cloud", h.sc.sky)}
+      </span>
+    </div>`;
+  }).join("");
+  const dstr=day.date.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  $("histDetail").innerHTML=
+    `<div class="hist-detail-head">Hourly · ${dstr}</div>`
+    +`<div class="hourly" style="display:block">
+        <div class="hrow hhead"><span>Time</span><span>Score</span>
+          <span>Temp · Humidity · Wind · Rain · Cloud</span></div>${rows}</div>`;
+  $("histDetail").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+$("histBody").onclick=e=>{
+  const tile=e.target.closest(".htile"); if(!tile) return;
+  $("histBody").querySelectorAll(".htile.sel").forEach(t=>t.classList.remove("sel"));
+  tile.classList.add("sel");
+  renderHistoricDetail(histDays[+tile.dataset.i]);
+};
 $("histBtn").onclick=showHistoric;
 $("histClose").onclick=()=>{ $("histModal").hidden=true; };
 $("histModal").onclick=e=>{ if(e.target===$("histModal")) $("histModal").hidden=true; };
